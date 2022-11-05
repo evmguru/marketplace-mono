@@ -50,9 +50,10 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
 
     /// @dev All possible words
     string[] nordle_words = [
-        "unicorn",
-        "outlier"
-    ]
+        'unicorn',
+        'outlier',
+        'ethereum'
+    ];
 
     /**
      * @notice Initialize the link token and target oracle
@@ -62,14 +63,17 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
      * Goerli Testnet details:
      * Link Token: 0x326C977E6efc84E512bB9C30f76E30c160eD06FB
      * Oracle: 0xCC79157eb46F5624204f47AB42b3906cAA40eaB7 (Chainlink DevRel)
+     * VRF: 0x2Ca8E0C643bDe4C2E08ab1fA0da3401AdAD7734D
      * jobId: 7da2702f37fd48e5b1b9a5715e3509b6
+     * 
      *
      */
     constructor(
         address linkToken,
         address linkOracle,
+        address linkVRF,
         bytes32 _jobIdAnyApi,
-        uint64 _vrfSubscriptionId,
+        uint64 _vrfSubscriptionId
     ) ERC721("Nordle", "NRD") ConfirmedOwner(msg.sender) {
         setChainlinkToken(linkToken);
         setChainlinkOracle(linkOracle);
@@ -77,9 +81,8 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
         feeAnyApi = (1 * LINK_DIVISIBILITY) / 10; // 0,1 * 10**18 (Varies by network and job)
 
         // Intialize the VRF Coordinator
-        VRF_COORDINATOR = VRFCoordinatorV2Interface(0x2Ca8E0C643bDe4C2E08ab1fA0da3401AdAD7734D);
+        VRF_COORDINATOR = VRFCoordinatorV2Interface(linkVRF);
         vrfSubscriptionId = _vrfSubscriptionId;
-
     }
 
     /// @dev Initiate request to create new word NFT
@@ -217,11 +220,11 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
     }
 
     function drawUrl(string memory phrase) public pure returns (bytes memory) {
-        return bytes.concat("https://api.nordle.lol/draw?phrase=", bytes(phrase));
+        return bytes.concat('https://nordle-server-ltu9g.ondigitalocean.app/draw?phrase=', bytes(phrase));
     }
 
-    function drawUrl(string memory phrase, bytes memory burnIds) public pure returns (bytes memory) {
-        return bytes.concat(drawUrl(phrase), "&burnIds=", burnIds);
+    function drawUrl(string memory phrase, bytes memory burnIdsBytes) public pure returns (bytes memory) {
+        return bytes.concat(drawUrl(phrase), '&burnIds=', burnIdsBytes);
     }
 
     /// @dev Decodes response from drawing, based on if it's a CreateWord or Combine
@@ -243,8 +246,8 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
         // while (s < urlSize) {
         //     s += 256;
         // }
-        imageUrl = bytesToString(payload.slice(8, uint256(urlSize)));
-        index += urlSize;
+        imageUrl = bytesToString(payload.slice(8, urlSize / 8));
+        index += urlSize / 8;
 
         uint256 j = 0;
         while (index < payload.length) {
