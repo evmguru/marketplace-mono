@@ -1,4 +1,5 @@
-import { Nordle, Nordle__factory } from '../../types';
+import { NORDLE_CONTRACT_ADDRESS } from '../../constants';
+import { ERC20, ERC20__factory, Nordle, Nordle__factory } from '../../types';
 import type { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers';
 // eslint-disable-next-line import/no-extraneous-dependencies
 import { task } from 'hardhat/config';
@@ -9,6 +10,16 @@ task('deploy:Nordle')
   .setAction(async function (taskArguments: TaskArguments, { ethers }) {
     console.log('Deploying Nordle...');
     const signers: SignerWithAddress[] = await ethers.getSigners();
+
+    // Withdraw link from prev contract
+    console.log('Withdrawing LINK from prev Nordle...');
+    const prevNordle: Nordle = Nordle__factory.connect(NORDLE_CONTRACT_ADDRESS, signers[0]);
+    const prevNordleWithdrawTx = await prevNordle.withdraw();
+    await prevNordleWithdrawTx.wait(1);
+    console.log('Withdrew LINK from prev Nordle!');
+
+    // Deploy Nordle contract
+    console.log('Deploying Nordle...');
     const nordleFactory = (await ethers.getContractFactory('Nordle')) as Nordle__factory;
 
     // Goerli config
@@ -27,4 +38,12 @@ task('deploy:Nordle')
     await nordle.deployed();
 
     console.log('Nordle deployed to: ', nordle.address);
+
+    // Fund deployed contract
+    console.log('Funding contract with LINK...');
+    const fundingLinkAmount = ethers.utils.parseEther('0.5');
+    const linkTokenContract = ERC20__factory.connect(linkToken, signers[0]);
+    const linkTransferTx = await linkTokenContract.transfer(nordle.address, fundingLinkAmount);
+    await linkTransferTx.wait(1);
+    console.log('Funded contract with LINK!');
   });
