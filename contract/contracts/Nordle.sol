@@ -3,7 +3,7 @@ pragma solidity ^0.8.7;
 
 import { Chainlink, ChainlinkClient, LinkTokenInterface } from '@chainlink/contracts/src/v0.8/ChainlinkClient.sol';
 import { ConfirmedOwner } from '@chainlink/contracts/src/v0.8/ConfirmedOwner.sol';
-import { ERC721 } from '@openzeppelin/contracts/token/ERC721/ERC721.sol';
+import { ERC721, ERC721URIStorage } from '@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol';
 
 import { BytesLib } from './BytesLib.sol';
 
@@ -12,7 +12,7 @@ import { BytesLib } from './BytesLib.sol';
  * Find information on LINK Token Contracts and get the latest ETH and LINK faucets here: https://docs.chain.link/docs/link-token-contracts/
  */
 
-contract Nordle is ERC721, ChainlinkClient, ConfirmedOwner {
+contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner {
     using BytesLib for bytes;
     using Chainlink for Chainlink.Request;
 
@@ -56,12 +56,15 @@ contract Nordle is ERC721, ChainlinkClient, ConfirmedOwner {
     /**
      * @notice Request variable bytes from the oracle
      */
-    function requestCombine(string[] memory words, uint256[] memory burnIds) public {
-        // Validate that caller is owner of all to-be-burned token IDs
+    function requestCombine(uint256[] memory burnIds) public {
+        // Validate that caller is owner of all to-be-burned token IDs,
+        // while adding all words for combining
         bytes memory burnIdsBytes;
-        for (uint i = 0; i < words.length; i++) {
+        string[] memory words;
+        for (uint i = 0; i < burnIds.length; i++) {
             require(ownerOf(burnIds[i]) == msg.sender, 'Invalid owner of burn ID');
             burnIdsBytes = bytes.concat(burnIdsBytes, bytes32(burnIds[i])); // don't encode pack
+            words[i] = tokenWords[burnIds[i]];
             unchecked { i++; }
         }
 
@@ -100,6 +103,7 @@ contract Nordle is ERC721, ChainlinkClient, ConfirmedOwner {
         }
 
         _mint(combineOwner, tokenIdCount);
+        _setTokenURI(tokenIdCount, imageUrl);
         tokenWords[tokenIdCount] = burnPhraseStorage[burnIdsBytes];
         tokenIdCount++;
     }
@@ -134,7 +138,7 @@ contract Nordle is ERC721, ChainlinkClient, ConfirmedOwner {
 
     function _decodeDrawResponse(bytes memory payload)
         private
-        view
+        pure
         returns (string memory imageUrl, uint256[] memory burnIds, bytes memory burnIdsBytes)
     {
         uint index = 0;
