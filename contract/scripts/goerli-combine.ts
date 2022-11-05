@@ -15,7 +15,6 @@ const provider = new providers.JsonRpcProvider('https://rpc.ankr.com/eth_goerli'
 const wallet = Wallet.fromMnemonic(mnemonic);
 const signer = wallet.connect(provider);
 
-// const contractAddress = '0x09aD4fe84C6C3c4C1F31297a751436Df9a506877'
 const contractAddress = '0x35387421Ac8B25E9d178B73F3a6fCfc1e995fAee';
 
 async function main() {
