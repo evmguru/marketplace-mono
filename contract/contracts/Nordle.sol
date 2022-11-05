@@ -22,16 +22,21 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner {
     event CombineRequested(bytes url, string[] indexed words, uint256[] indexed burnIds);
     event CombineRequestFulfilled(bytes32 indexed requestId, bytes indexed data);
 
-    bytes32 private jobId;
-    uint256 private fee;
+    /// @dev Chainlink Any API Job ID
+    bytes32 private jobIdAnyApi;
 
+    /// @dev Chainlink Any API Fee
+    uint256 private feeAnyApi;
+
+    /// @dev NFT Token ID counter
     uint256 private tokenIdCount;
 
     /// @dev Words (phrase) associated with each token
-    mapping(uint256 => string) tokenWords;
+    mapping(uint256 => string) public tokenWords;
 
     /// @dev For a list of IDs burned, check what phrase was burned (burnIdsBytes is bytes of arbitrary length)
-    mapping(bytes => string) burnPhraseStorage;
+    /// @dev This is like a snapshot, and also needed when receiving AnyAPI for combining words
+    mapping(bytes => string) public burnPhraseStorage;
 
     /**
      * @notice Initialize the link token and target oracle
@@ -47,14 +52,15 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner {
     constructor(
         address linkToken,
         address linkOracle,
-        bytes32 _jobId
+        bytes32 _jobIdAnyApi
     ) ERC721('Nordle', 'NRD') ConfirmedOwner(msg.sender) {
         setChainlinkToken(linkToken);
         setChainlinkOracle(linkOracle);
-        jobId = _jobId;
-        fee = (1 * LINK_DIVISIBILITY) / 10; // 0,1 * 10**18 (Varies by network and job)
+        jobIdAnyApi = _jobIdAnyApi;
+        feeAnyApi = (1 * LINK_DIVISIBILITY) / 10; // 0,1 * 10**18 (Varies by network and job)
     }
 
+    /// @dev Initiate request to create new word NFT
     function requestCreateWord() public {
         //
         // TODO: Chainlink VRF for creating random word
@@ -62,15 +68,17 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner {
         string memory word = 'unicorn';
 
         // Chainlink Any API
-        Chainlink.Request memory req = buildChainlinkRequest(jobId, address(this), this.fulfillCreateWord.selector);
+        Chainlink.Request memory req = buildChainlinkRequest(jobIdAnyApi, address(this), this.fulfillCreateWord.selector);
         bytes memory url = drawUrl(word);
         req.addBytes('get', url);
         req.add('path', 'payload,data'); // response looks like: { payload: { data: '' } }
-        sendChainlinkRequest(req, fee);
+        sendChainlinkRequest(req, feeAnyApi);
 
         emit CreateWordRequested(url, word);
     }
 
+    /// @dev Fulfill request to create new word NFT
+    /// @dev Actual minting happens here
     function fulfillCreateWord(bytes32 requestId, bytes memory bytesData) public recordChainlinkFulfillment(requestId) {
         emit CreateWordRequestFulfilled(requestId, bytesData);
 
@@ -107,11 +115,11 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner {
         burnPhraseStorage[burnIdsBytes] = phrase;
 
         // Chainlink Any API
-        Chainlink.Request memory req = buildChainlinkRequest(jobId, address(this), this.fulfillCombine.selector);
+        Chainlink.Request memory req = buildChainlinkRequest(jobIdAnyApi, address(this), this.fulfillCombine.selector);
         bytes memory url = drawUrl(phrase, burnIdsBytes);
         req.addBytes('get', url);
         req.add('path', 'payload,data'); // response looks like: { payload: { data: '' } }
-        sendChainlinkRequest(req, fee);
+        sendChainlinkRequest(req, feeAnyApi);
 
         emit CombineRequested(url, words, burnIds);
     }
