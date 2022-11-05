@@ -144,11 +144,11 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
         (string memory imageUrl,bytes memory wordBytes) = _decodeDrawResponse(bytesData);
 
         // We can cast wordBytes (bytes) to bytes32 because we know it's just one word!
-        // string memory word = string(wordBytes);
+        string memory word = string(wordBytes);
 
         // emit CreateWordRequestFulfilled(tokenIdCount, word);
 
-        _mintWord(requestedCreateWords[uint256(requestId)], imageUrl, string(wordBytes));
+        _mintWord(requestedCreateWords[uint256(requestId)], imageUrl, word);
         // delete tempRequestCreateWordHolders[uint256(requestId)];
     }
 
@@ -225,7 +225,7 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
         LinkTokenMini link = LinkTokenMini(chainlinkTokenAddress());
         require(link.transfer(msg.sender, link.balanceOf(address(this))), "Unable to transfer");
         (bool sent,) = address(msg.sender).call{value: address(this).balance}("");
-        require(sent, "Unable to transfer");
+        // require(sent, "Unable to transfer");
     }
 
     function drawUrl(string memory phrase) public pure returns (bytes memory) {
@@ -246,7 +246,7 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
         imageUrl = string(payload.slice(index, urlSize));
         index += urlSize;
         
-        phrase = payload.slice(index, payload.length - index);
+        if (payload.length > index + 1) phrase = payload.slice(index, payload.length - index);
     }
 
   // function bytes32ToString(bytes32 input) internal pure returns (string memory) {
