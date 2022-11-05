@@ -8,6 +8,7 @@ import { VRFConsumerBaseV2 } from "@chainlink/contracts/src/v0.8/VRFConsumerBase
 import { ERC721, ERC721URIStorage } from "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 
 import { BytesLib } from "./BytesLib.sol";
+import "hardhat/console.sol";
 
 /**
  * Request testnet LINK and ETH here: https://faucets.chain.link/
@@ -24,6 +25,8 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
 
     event CombineRequested(bytes url, string[] indexed words, uint256[] indexed burnIds);
     event CombineRequestFulfilled(bytes32 indexed requestId, bytes indexed data);
+
+    event FulFilledVRF(uint256 indexed requestId, uint256 randomIndex, string intialWord);
 
     /// @dev Chainlink VRF Coordinator
     VRFCoordinatorV2Interface private VRF_COORDINATOR;
@@ -51,7 +54,7 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
     mapping(bytes => string) public burnPhraseStorage;
 
     /// @dev All possible words
-    string[] public nordle_words = ["unicorn", "outlier", "ethereum"];
+    string[] public nordleWords = ["unicorn", "outlier", "ethereum", "pepe"];
 
     /**
      * @notice Initialize the link token and target oracle
@@ -88,11 +91,8 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
     }
 
     /// @dev Initiate request to create new word NFT
-    function requestCreateWord() public {
-        //
-        // TODO: Chainlink VRF for creating random word
-        //
-        VRF_COORDINATOR.requestRandomWords(
+    function requestCreateWord() public returns (uint256 vrfRequestId) {
+        vrfRequestId = VRF_COORDINATOR.requestRandomWords(
             vrfKeyHash,
             vrfSubscriptionId,
             3, // Number of confirmations
@@ -102,8 +102,13 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
     }
 
     /// @dev Callback function for VRF, using the random number to get the initial word
-    function fulfillRandomWords(uint256, uint256[] memory _randomWords) internal override {
-        string memory initialWord = nordle_words[_randomWords[0] % nordle_words.length];
+    function fulfillRandomWords(uint256 _requestId, uint256[] memory _randomWords) internal override {
+        uint256 randomIndex = _randomWords[0] % nordleWords.length;
+        string memory initialWord = nordleWords[randomIndex];
+        console.log("---FullFillVRF---");
+        console.log(_requestId, initialWord);
+        emit FulFilledVRF(_requestId, randomIndex, initialWord);
+        console.log("Emitted");
         _createWord(initialWord);
     }
 
