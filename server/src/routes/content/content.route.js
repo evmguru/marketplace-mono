@@ -12,7 +12,7 @@ router.get(
   '/draw',
   validate(contentValidation.draw),
   catchAsync(async (req, res, next) => {
-    const options = pick(req.query, ['phrase', 'burnIds'])
+    const options = pick(req.query, ['phrase'])
     const data = await contentService.draw(options)
     res.locals = { data }
     next()
