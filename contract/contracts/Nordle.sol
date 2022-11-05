@@ -60,19 +60,12 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
      * @notice Initialize the link token and target oracle
      * @dev The oracle address must be an Operator contract for multiword response
      *
-     *
      * Goerli Testnet details:
      * Link Token: 0x326C977E6efc84E512bB9C30f76E30c160eD06FB
      * Oracle: 0xCC79157eb46F5624204f47AB42b3906cAA40eaB7 (Chainlink DevRel)
      * VRF: 0x2Ca8E0C643bDe4C2E08ab1fA0da3401AdAD7734D
      * sKeyHash: 0x79d3d8832d904592c0bf9818b621522c988bb8b0c05cdc3b15aea1b6e8db0c15
-<<<<<<< Updated upstream
-     * jobId: ca98366cc7314957b8c012c72f05aeeb
-     *
-=======
      * jobId: 7da2702f37fd48e5b1b9a5715e3509b6 // https://docs.chain.link/docs/any-api/testnet-oracles/#job-ids
-     * 
->>>>>>> Stashed changes
      *
      */
     constructor(
@@ -86,12 +79,8 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
         setChainlinkToken(linkToken);
         setChainlinkOracle(linkOracle);
         // jobIdAnyApi = _jobIdAnyApi;
-<<<<<<< Updated upstream
-        jobIdAnyApi = "ca98366cc7314957b8c012c72f05aeeb";
-=======
         // https://docs.chain.link/docs/any-api/testnet-oracles/#job-ids
         jobIdAnyApi = '7da2702f37fd48e5b1b9a5715e3509b6'; // Job ID for GET>bytes
->>>>>>> Stashed changes
         feeAnyApi = (1 * LINK_DIVISIBILITY) / 10; // 0,1 * 10**18 (Varies by network and job)
 
         // Intialize the VRF Coordinator
@@ -147,15 +136,14 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
         (string memory imageUrl, , bytes memory wordBytes) = _decodeDrawResponse(bytesData, false);
 
         // We can cast wordBytes (bytes) to bytes32 because we know it's just one word!
-        // string memory word = bytes32ToString(bytes32(wordBytes));
+        string memory word = bytes32ToString(bytes32(wordBytes));
 
-        string memory word = "lol";
         emit CreateWordRequestFulfilled(requestId, bytesData, tokenIdCount, word);
 
-        // _mint(msg.sender, tokenIdCount);
-        // _setTokenURI(tokenIdCount, imageUrl);
-        // tokenWords[tokenIdCount] = word;
-        // tokenIdCount++;
+        _mint(msg.sender, tokenIdCount);
+        _setTokenURI(tokenIdCount, imageUrl);
+        tokenWords[tokenIdCount] = word;
+        tokenIdCount++;
     }
 
     /**
