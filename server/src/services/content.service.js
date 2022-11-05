@@ -1,6 +1,7 @@
 import { utils } from 'ethers'
 // import * as fs from 'fs'
 import httpStatus from 'http-status'
+import { Web3Storage } from 'web3.storage'
 
 import { ApiError } from '../utils'
 import { openai } from '../constants'

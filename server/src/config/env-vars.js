@@ -20,6 +20,8 @@ const envVarsSchema = Joi.object()
 
     OPENAI_API_KEY: Joi.string().required(),
 
+    WEB3STORAGE_TOKEN: Joi.string().required(),
+
     SESSION_SECRET: Joi.string().required().description('Secret key for protecting sessions'),
   })
   .unknown()
@@ -37,6 +39,8 @@ export default {
   privateKey: envVars.PRIVATE_KEY,
 
   openAiApiKey: envVars.OPENAI_API_KEY,
+
+  web3StorageToken: envVars.WEB3STORAGE_TOKEN,
 
   sessionSecret: envVars.SESSION_SECRET,
 }
