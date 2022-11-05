@@ -9,6 +9,6 @@ const openAiConfig = new Configuration({ apiKey: envVars.openAiApiKey })
 
 export const openai = new OpenAIApi(openAiConfig)
 
-export function makeStorageClient() {
-  return new Web3Storage({ token: envVars.web3StorageToken })
-}
+// export function makeStorageClient() {
+//   return new Web3Storage({ token: envVars.web3StorageToken })
+// }
