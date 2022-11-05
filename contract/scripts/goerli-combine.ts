@@ -25,9 +25,8 @@ async function main() {
   // console.log(tx)
   // console.log(await tx.wait())
 
-  const tx = await nordle['requestCreateWord(string)']('flying', {
+  const tx = await nordle.requestCombine([0, 1], {
     gasLimit: 5_000_000,
-    value: BigNumber.from(5).mul(BigNumber.from(10).pow(16)),
   });
   console.log(tx);
   console.log(await tx.wait());
