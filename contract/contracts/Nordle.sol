@@ -1,18 +1,19 @@
 //SPDX-License-Identifier: MIT
 pragma solidity ^0.8.7;
 
-import { Chainlink, ChainlinkClient, LinkTokenInterface } from '@chainlink/contracts/src/v0.8/ChainlinkClient.sol';
-import { ConfirmedOwner } from '@chainlink/contracts/src/v0.8/ConfirmedOwner.sol';
-import { ERC721, ERC721URIStorage } from '@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol';
+import { Chainlink, ChainlinkClient, LinkTokenInterface } from "@chainlink/contracts/src/v0.8/ChainlinkClient.sol";
+import { ConfirmedOwner } from "@chainlink/contracts/src/v0.8/ConfirmedOwner.sol";
+import { VRFConsumerBaseV2 } from "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2";
+import { ERC721, ERC721URIStorage } from "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 
-import { BytesLib } from './BytesLib.sol';
+import { BytesLib } from "./BytesLib.sol";
 
 /**
  * Request testnet LINK and ETH here: https://faucets.chain.link/
  * Find information on LINK Token Contracts and get the latest ETH and LINK faucets here: https://docs.chain.link/docs/link-token-contracts/
  */
 
-contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner {
+contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsumerBaseV2 {
     using BytesLib for bytes;
     using Chainlink for Chainlink.Request;
 
@@ -21,6 +22,15 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner {
 
     event CombineRequested(bytes url, string[] indexed words, uint256[] indexed burnIds);
     event CombineRequestFulfilled(bytes32 indexed requestId, bytes indexed data);
+
+    /// @dev Chainlink VRF Coordinator
+    VRFCoordinatorV2Interface VRF_COORDINATOR;
+
+    /// @dev Chainlink VRF Subscription ID
+    uint64 immutable vrfSubscriptionId;
+
+    /// @dev Chainlink VRF Max Gas Price Key Hash
+    bytes32 immutable vrfKeyHash;
 
     /// @dev Chainlink Any API Job ID
     bytes32 private jobIdAnyApi;
@@ -38,6 +48,12 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner {
     /// @dev This is like a snapshot, and also needed when receiving AnyAPI for combining words
     mapping(bytes => string) public burnPhraseStorage;
 
+    /// @dev All possible words
+    string[] nordle_words = [
+        "unicorn",
+        "outlier"
+    ]
+
     /**
      * @notice Initialize the link token and target oracle
      * @dev The oracle address must be an Operator contract for multiword response
@@ -52,12 +68,18 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner {
     constructor(
         address linkToken,
         address linkOracle,
-        bytes32 _jobIdAnyApi
-    ) ERC721('Nordle', 'NRD') ConfirmedOwner(msg.sender) {
+        bytes32 _jobIdAnyApi,
+        uint64 _vrfSubscriptionId,
+    ) ERC721("Nordle", "NRD") ConfirmedOwner(msg.sender) {
         setChainlinkToken(linkToken);
         setChainlinkOracle(linkOracle);
         jobIdAnyApi = _jobIdAnyApi;
         feeAnyApi = (1 * LINK_DIVISIBILITY) / 10; // 0,1 * 10**18 (Varies by network and job)
+
+        // Intialize the VRF Coordinator
+        VRF_COORDINATOR = VRFCoordinatorV2Interface(0x2Ca8E0C643bDe4C2E08ab1fA0da3401AdAD7734D);
+        vrfSubscriptionId = _vrfSubscriptionId;
+
     }
 
     /// @dev Initiate request to create new word NFT
@@ -65,16 +87,34 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner {
         //
         // TODO: Chainlink VRF for creating random word
         //
-        string memory word = 'unicorn';
+        VRF_COORDINATOR.requestRandomWords(
+            vrfKeyHash,
+            vrfSubscriptionId,
+            3, // Number of confirmations
+            100000, // Callback gas limit
+            1 // Number of generated words
+        )
+    }
 
+    /// @dev Callback function for VRF, using the random number to get the initial word
+    function fulfillRandomWords(uint256 _requestId, uint256[] memory _randomWords) internal override {
+        string initial_word = nordle_words[_randomWords[0] % nordle_words.length];
+        _createWord(initial_word);
+    }
+
+    function _createWord(string memory _initialWord) internal {
         // Chainlink Any API
-        Chainlink.Request memory req = buildChainlinkRequest(jobIdAnyApi, address(this), this.fulfillCreateWord.selector);
-        bytes memory url = drawUrl(word);
-        req.addBytes('get', url);
-        req.add('path', 'payload,data'); // response looks like: { payload: { data: '' } }
+        Chainlink.Request memory req = buildChainlinkRequest(
+            jobIdAnyApi,
+            address(this),
+            this.fulfillCreateWord.selector
+        );
+        bytes memory url = drawUrl(_initialWord);
+        req.addBytes("get", url);
+        req.add("path", "payload,data"); // response looks like: { payload: { data: '' } }
         sendChainlinkRequest(req, feeAnyApi);
 
-        emit CreateWordRequested(url, word);
+        emit CreateWordRequested(url, _initialWord);
     }
 
     /// @dev Fulfill request to create new word NFT
@@ -82,7 +122,7 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner {
     function fulfillCreateWord(bytes32 requestId, bytes memory bytesData) public recordChainlinkFulfillment(requestId) {
         emit CreateWordRequestFulfilled(requestId, bytesData);
 
-        (string memory imageUrl,, bytes memory wordBytes) = _decodeDrawResponse(bytesData, false);
+        (string memory imageUrl, , bytes memory wordBytes) = _decodeDrawResponse(bytesData, false);
 
         // We can cast wordBytes (bytes) to bytes32 because we know it's just one word!
         string memory word = bytes32ToString(bytes32(wordBytes));
@@ -101,11 +141,13 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner {
         // while adding all words for combining
         bytes memory burnIdsBytes;
         string[] memory words;
-        for (uint i = 0; i < burnIds.length; i++) {
-            require(ownerOf(burnIds[i]) == msg.sender, 'Invalid owner of burn ID');
+        for (uint256 i = 0; i < burnIds.length; i++) {
+            require(ownerOf(burnIds[i]) == msg.sender, "Invalid owner of burn ID");
             burnIdsBytes = bytes.concat(burnIdsBytes, bytes32(burnIds[i])); // don't encode pack
             words[i] = tokenWords[burnIds[i]];
-            unchecked { i++; }
+            unchecked {
+                i++;
+            }
         }
 
         // Combine words into a phrase
@@ -117,8 +159,8 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner {
         // Chainlink Any API
         Chainlink.Request memory req = buildChainlinkRequest(jobIdAnyApi, address(this), this.fulfillCombine.selector);
         bytes memory url = drawUrl(phrase, burnIdsBytes);
-        req.addBytes('get', url);
-        req.add('path', 'payload,data'); // response looks like: { payload: { data: '' } }
+        req.addBytes("get", url);
+        req.add("path", "payload,data"); // response looks like: { payload: { data: '' } }
         sendChainlinkRequest(req, feeAnyApi);
 
         emit CombineRequested(url, words, burnIds);
@@ -131,15 +173,20 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner {
     function fulfillCombine(bytes32 requestId, bytes memory bytesData) public recordChainlinkFulfillment(requestId) {
         emit CombineRequestFulfilled(requestId, bytesData);
 
-        (string memory imageUrl, uint256[] memory burnIds, bytes memory burnIdsBytes) = _decodeDrawResponse(bytesData, true);
+        (string memory imageUrl, uint256[] memory burnIds, bytes memory burnIdsBytes) = _decodeDrawResponse(
+            bytesData,
+            true
+        );
 
         // Retrieve the owner by referencing the first burn Id
         address combineOwner = ownerOf(burnIds[0]);
 
         // Burn the burned word NFTs, then mint a new one
-        for (uint i = 0; i < burnIds.length; i++) {
+        for (uint256 i = 0; i < burnIds.length; i++) {
             _burn(burnIds[i]);
-            unchecked { i++; }
+            unchecked {
+                i++;
+            }
         }
 
         _mint(combineOwner, tokenIdCount);
@@ -153,38 +200,43 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner {
      */
     function withdrawLink() public onlyOwner {
         LinkTokenInterface link = LinkTokenInterface(chainlinkTokenAddress());
-        require(link.transfer(msg.sender, link.balanceOf(address(this))), 'Unable to transfer');
+        require(link.transfer(msg.sender, link.balanceOf(address(this))), "Unable to transfer");
     }
 
     function combineWords(string[] memory words) public pure returns (string memory) {
         bytes memory output;
 
-        for (uint i = 0; i < words.length; i++) {
-            output = abi.encode(output, '_', words[i]); // 'happy dolphine' => 'happy_dolphine'
-            unchecked { i++; }
+        for (uint256 i = 0; i < words.length; i++) {
+            output = abi.encode(output, "_", words[i]); // 'happy dolphine' => 'happy_dolphine'
+            unchecked {
+                i++;
+            }
         }
 
         return string(output);
     }
 
     function drawUrl(string memory phrase) public pure returns (bytes memory) {
-        return bytes.concat('https://api.nordle.lol/draw?phrase=', bytes(phrase));
+        return bytes.concat("https://api.nordle.lol/draw?phrase=", bytes(phrase));
     }
 
     function drawUrl(string memory phrase, bytes memory burnIds) public pure returns (bytes memory) {
-        return bytes.concat(drawUrl(phrase), '&burnIds=', burnIds);
+        return bytes.concat(drawUrl(phrase), "&burnIds=", burnIds);
     }
-
 
     /// @dev Decodes response from drawing, based on if it's a CreateWord or Combine
     function _decodeDrawResponse(bytes memory payload, bool isCombine)
         private
         pure
-        returns (string memory imageUrl, uint256[] memory burnIds, bytes memory burnIdsBytesOrOutputPhrase)
+        returns (
+            string memory imageUrl,
+            uint256[] memory burnIds,
+            bytes memory burnIdsBytesOrOutputPhrase
+        )
     {
-        uint index = 0;
+        uint256 index = 0;
 
-        uint urlSize = uint256(payload.slice(0,8).toUint64(0));
+        uint256 urlSize = uint256(payload.slice(0, 8).toUint64(0));
         index += 8;
 
         // uint s = 0;
@@ -194,7 +246,7 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner {
         imageUrl = bytesToString(payload.slice(8, uint256(urlSize)));
         index += urlSize;
 
-        uint j = 0;
+        uint256 j = 0;
         while (index < payload.length) {
             bytes32 bib = payload.slice(index, index + 32).toBytes32(0);
             burnIdsBytesOrOutputPhrase = bytes.concat(burnIdsBytesOrOutputPhrase, bib);
@@ -212,7 +264,7 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner {
             i++;
         }
         bytes memory array = new bytes(i);
-        for (uint c = 0; c < i; c++) {
+        for (uint256 c = 0; c < i; c++) {
             array[c] = input[c];
         }
         return string(array);
@@ -220,12 +272,12 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner {
 
     /// @dev https://ethereum.stackexchange.com/a/96516
     /// @dev Is this function safe?
-    function bytesToString(bytes memory byteCode) public pure returns(string memory stringData) {
+    function bytesToString(bytes memory byteCode) public pure returns (string memory stringData) {
         uint256 blank = 0; //blank 32 byte value
         uint256 length = byteCode.length;
 
-        uint cycles = byteCode.length / 0x20;
-        uint requiredAlloc = length;
+        uint256 cycles = byteCode.length / 0x20;
+        uint256 requiredAlloc = length;
 
         if (length % 0x20 > 0) //optimise copying the final part of the bytes - to avoid looping with single byte writes
         {
@@ -239,10 +291,9 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner {
         assembly {
             let cycle := 0
 
-            for
-            {
+            for {
                 let mc := add(stringData, 0x20) //pointer into bytes we're writing to
-                let cc := add(byteCode, 0x20)   //pointer to where we're reading from
+                let cc := add(byteCode, 0x20) //pointer to where we're reading from
             } lt(cycle, cycles) {
                 mc := add(mc, 0x20)
                 cc := add(cc, 0x20)
@@ -253,11 +304,9 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner {
         }
 
         //finally blank final bytes and shrink size (part of the optimisation to avoid looping adding blank bytes1)
-        if (length % 0x20 > 0)
-        {
-            uint offsetStart = 0x20 + length;
-            assembly
-            {
+        if (length % 0x20 > 0) {
+            uint256 offsetStart = 0x20 + length;
+            assembly {
                 let mc := add(stringData, offsetStart)
                 mstore(mc, mload(add(blank, 0x20)))
                 //now shrink the memory back so the returned object is the correct size
