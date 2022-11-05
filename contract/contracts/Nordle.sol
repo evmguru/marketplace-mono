@@ -11,7 +11,8 @@ import { BytesLib } from "./BytesLib.sol";
 
 /**
  * Request testnet LINK and ETH here: https://faucets.chain.link/
- * Find information on LINK Token Contracts and get the latest ETH and LINK faucets here: https://docs.chain.link/docs/link-token-contracts/
+ * Find information on LINK Token Contracts and get the latest ETH and LINK faucets here:
+ * https://docs.chain.link/docs/link-token-contracts/
  */
 
 contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsumerBaseV2 {
@@ -28,10 +29,10 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
     VRFCoordinatorV2Interface private VRF_COORDINATOR;
 
     /// @dev Chainlink VRF Subscription ID
-    uint64 immutable vrfSubscriptionId;
+    uint64 private immutable vrfSubscriptionId;
 
     /// @dev Chainlink VRF Max Gas Price Key Hash
-    bytes32 immutable vrfKeyHash;
+    bytes32 private immutable vrfKeyHash;
 
     /// @dev Chainlink Any API Job ID
     bytes32 private jobIdAnyApi;
@@ -50,11 +51,7 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
     mapping(bytes => string) public burnPhraseStorage;
 
     /// @dev All possible words
-    string[] nordle_words = [
-        'unicorn',
-        'outlier',
-        'ethereum'
-    ];
+    string[] public nordle_words = ["unicorn", "outlier", "ethereum"];
 
     /**
      * @notice Initialize the link token and target oracle
@@ -67,7 +64,7 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
      * VRF: 0x2Ca8E0C643bDe4C2E08ab1fA0da3401AdAD7734D
      * sKeyHash: 0x79d3d8832d904592c0bf9818b621522c988bb8b0c05cdc3b15aea1b6e8db0c15
      * jobId: ca98366cc7314957b8c012c72f05aeeb
-     * 
+     *
      *
      */
     constructor(
@@ -81,7 +78,7 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
         setChainlinkToken(linkToken);
         setChainlinkOracle(linkOracle);
         // jobIdAnyApi = _jobIdAnyApi;
-        jobIdAnyApi = 'ca98366cc7314957b8c012c72f05aeeb';
+        jobIdAnyApi = "ca98366cc7314957b8c012c72f05aeeb";
         feeAnyApi = (1 * LINK_DIVISIBILITY) / 10; // 0,1 * 10**18 (Varies by network and job)
 
         // Intialize the VRF Coordinator
@@ -105,9 +102,9 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
     }
 
     /// @dev Callback function for VRF, using the random number to get the initial word
-    function fulfillRandomWords(uint256 _requestId, uint256[] memory _randomWords) internal override {
-        string memory initial_word = nordle_words[_randomWords[0] % nordle_words.length];
-        _createWord(initial_word);
+    function fulfillRandomWords(uint256, uint256[] memory _randomWords) internal override {
+        string memory initialWord = nordle_words[_randomWords[0] % nordle_words.length];
+        _createWord(initialWord);
     }
 
     function _createWord(string memory _initialWord) internal {
@@ -225,11 +222,11 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
     }
 
     function drawUrl(string memory phrase) public pure returns (bytes memory) {
-        return bytes.concat('https://nordle-server-ltu9g.ondigitalocean.app/draw?phrase=', bytes(phrase));
+        return bytes.concat("https://nordle-server-ltu9g.ondigitalocean.app/draw?phrase=", bytes(phrase));
     }
 
     function drawUrl(string memory phrase, bytes memory burnIdsBytes) public pure returns (bytes memory) {
-        return bytes.concat(drawUrl(phrase), '&burnIds=', burnIdsBytes);
+        return bytes.concat(drawUrl(phrase), "&burnIds=", burnIdsBytes);
     }
 
     /// @dev Decodes response from drawing, based on if it's a CreateWord or Combine
