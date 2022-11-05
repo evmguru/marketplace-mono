@@ -17,7 +17,7 @@ const abiCoder = new utils.AbiCoder()
 
 export async function draw(options) {
   try {
-    const { phrase, burnIds } = options
+    const { phrase } = options
 
     // const response = await openai.createImage({
     //   prompt: phrase.split('_').join(' '), // happy_unicorn => happy unicorn
@@ -40,18 +40,10 @@ export async function draw(options) {
     // 3b) Or prhase
 
     // NOTE: MUST USE `utils.solidityPack` in ethers.js to mimic `abi.encode()` in Solidity
-    let bytesData = ''
-    if (burnIds) {
-      bytesData = utils.solidityPack(
-        ['uint256', 'string', 'bytes'],
-        [imageUrlLength, imageUrl, burnIds],
-      )
-    } else {
-      bytesData = utils.solidityPack(
-        ['uint256', 'string', 'string'],
-        [imageUrlLength, imageUrl, phrase],
-      )
-    }
+    const bytesData = utils.solidityPack(
+      ['uint256', 'string', 'string'],
+      [imageUrlLength, imageUrl, phrase],
+    )
 
     // console.log(phrase, imageUrl)
     // console.log(bytesData)
