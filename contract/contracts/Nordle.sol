@@ -3,7 +3,8 @@ pragma solidity ^0.8.7;
 
 import { Chainlink, ChainlinkClient, LinkTokenInterface } from "@chainlink/contracts/src/v0.8/ChainlinkClient.sol";
 import { ConfirmedOwner } from "@chainlink/contracts/src/v0.8/ConfirmedOwner.sol";
-import { VRFConsumerBaseV2 } from "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2";
+import { VRFCoordinatorV2Interface } from "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
+import { VRFConsumerBaseV2 } from "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
 import { ERC721, ERC721URIStorage } from "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 
 import { BytesLib } from "./BytesLib.sol";
@@ -24,7 +25,7 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
     event CombineRequestFulfilled(bytes32 indexed requestId, bytes indexed data);
 
     /// @dev Chainlink VRF Coordinator
-    VRFCoordinatorV2Interface VRF_COORDINATOR;
+    VRFCoordinatorV2Interface private VRF_COORDINATOR;
 
     /// @dev Chainlink VRF Subscription ID
     uint64 immutable vrfSubscriptionId;
@@ -64,6 +65,7 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
      * Link Token: 0x326C977E6efc84E512bB9C30f76E30c160eD06FB
      * Oracle: 0xCC79157eb46F5624204f47AB42b3906cAA40eaB7 (Chainlink DevRel)
      * VRF: 0x2Ca8E0C643bDe4C2E08ab1fA0da3401AdAD7734D
+     * sKeyHash: 0x79d3d8832d904592c0bf9818b621522c988bb8b0c05cdc3b15aea1b6e8db0c15
      * jobId: 7da2702f37fd48e5b1b9a5715e3509b6
      * 
      *
@@ -71,18 +73,20 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
     constructor(
         address linkToken,
         address linkOracle,
-        address linkVRF,
+        address linkVRFCoordinator,
+        bytes32 sKeyHash,
         bytes32 _jobIdAnyApi,
         uint64 _vrfSubscriptionId
-    ) ERC721("Nordle", "NRD") ConfirmedOwner(msg.sender) {
+    ) ERC721("Nordle", "NRD") ConfirmedOwner(msg.sender) VRFConsumerBaseV2(linkVRFCoordinator) {
         setChainlinkToken(linkToken);
         setChainlinkOracle(linkOracle);
         jobIdAnyApi = _jobIdAnyApi;
         feeAnyApi = (1 * LINK_DIVISIBILITY) / 10; // 0,1 * 10**18 (Varies by network and job)
 
         // Intialize the VRF Coordinator
-        VRF_COORDINATOR = VRFCoordinatorV2Interface(linkVRF);
+        VRF_COORDINATOR = VRFCoordinatorV2Interface(linkVRFCoordinator);
         vrfSubscriptionId = _vrfSubscriptionId;
+        vrfKeyHash = sKeyHash;
     }
 
     /// @dev Initiate request to create new word NFT
@@ -96,12 +100,12 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
             3, // Number of confirmations
             100000, // Callback gas limit
             1 // Number of generated words
-        )
+        );
     }
 
     /// @dev Callback function for VRF, using the random number to get the initial word
     function fulfillRandomWords(uint256 _requestId, uint256[] memory _randomWords) internal override {
-        string initial_word = nordle_words[_randomWords[0] % nordle_words.length];
+        string memory initial_word = nordle_words[_randomWords[0] % nordle_words.length];
         _createWord(initial_word);
     }
 
