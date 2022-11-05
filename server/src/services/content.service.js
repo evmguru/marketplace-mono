@@ -16,10 +16,10 @@ const abiCoder = new utils.AbiCoder()
 
 export async function draw(options) {
   try {
-    const { words, burnIds } = options
+    const { phrase, burnIds } = options
 
     const response = await openai.createImage({
-      prompt: words.split('_').join(' '), // happy_unicorn => happy unicorn
+      prompt: phrase.split('_').join(' '), // happy_unicorn => happy unicorn
       n: 1,
       size: '512x512',
     })
@@ -29,15 +29,20 @@ export async function draw(options) {
     // Return byte-converted data of:
     // 1) byte length of Image URL (uint64 max)
     // 2) actual Image URL (converted to bytes)
-    // 3) bytes of burn token IDs (each ID is uint256 or 32 bytes)
-    const bytesData = abiCoder.encode(
-      ['uint64', 'bytes', 'bytes'],
-      [
-        imageUrlBytes.length,
-        imageUrlBytes,
-        burnIds,
-      ],
-    )
+    // 3a) bytes of burn token IDs (each ID is uint256 or 32 bytes)
+    // 3b) Or prhase
+    let bytesData = ''
+    if (burnIds) {
+      bytesData = abiCoder.encode(
+        ['uint64', 'bytes', 'bytes'],
+        [imageUrlBytes.length, imageUrlBytes, burnIds],
+      )
+    } else {
+      bytesData = abiCoder.encode(
+        ['uint64', 'bytes', 'string'],
+        [imageUrlBytes.length, imageUrlBytes, phrase],
+      )
+    }
     return bytesData
   } catch (e) {
     console.log(e)
