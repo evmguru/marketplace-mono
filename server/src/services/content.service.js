@@ -45,7 +45,7 @@ export async function draw(options) {
       )
     } else {
       bytesData = utils.solidityPack(
-        ['uint256', 'string', 'string', 'string'],
+        ['uint256', 'string', 'bytes32', 'string'],
         [imageUrlLength, imageUrl, owner, phrase],
       )
     }
