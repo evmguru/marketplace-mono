@@ -112,7 +112,7 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
     /// @dev Initiate request to create new word NFT, and you can "buy" a word (initiate it)
     function requestCreateWord(string memory word) public payable {
         require(msg.value == wordForcedPrice, 'Invalid payment');
-        _createWord(word, msg.sender);
+        _createWord(word);
     }
 
     /// @dev Callback function for VRF, using the random number to get the initial word
@@ -122,18 +122,17 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
 
         // emit FulfilledVRF(_requestId, randomIndex, word);
 
-        _createWord(word, tempRequestCreateWordHolders[_requestId]);
-        delete tempRequestCreateWordHolders[_requestId];
+        _createWord(word);
     }
 
-    function _createWord(string memory _initialWord, address owner) internal {
+    function _createWord(string memory _initialWord) internal {
         // Chainlink Any API
         Chainlink.Request memory req = buildChainlinkRequest(
             jobIdAnyApi,
             address(this),
             this.fulfillCreateWord.selector
         );
-        bytes memory url = drawUrl(_initialWord, owner);
+        bytes memory url = drawUrl(_initialWord);
         req.add("get", string(url));
         req.add("path", "payload,data"); // response looks like: { payload: { data: '' } }
         sendChainlinkRequest(req, feeAnyApi);
@@ -144,14 +143,14 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
     /// @dev Fulfill request to create new word NFT
     /// @dev Actual minting happens here
     function fulfillCreateWord(bytes32 requestId, bytes memory bytesData) public recordChainlinkFulfillment(requestId) {
-        (string memory imageUrl, , address owner, bytes memory wordBytes) = _decodeDrawResponse(bytesData, false);
+        (string memory imageUrl,,bytes memory wordBytes) = _decodeDrawResponse(bytesData, false);
 
         // We can cast wordBytes (bytes) to bytes32 because we know it's just one word!
         string memory word = string(wordBytes);
 
         emit CreateWordRequestFulfilled(tokenIdCount, word);
 
-        _mintWord(owner, imageUrl, word);
+        _mintWord(tempRequestCreateWordHolders[uint256(requestId)], imageUrl, word);
     }
 
     /**
@@ -176,7 +175,7 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
 
         // Chainlink Any API
         Chainlink.Request memory req = buildChainlinkRequest(jobIdAnyApi, address(this), this.fulfillCombine.selector);
-        bytes memory url = bytes.concat(drawUrl(string(phrase), address(0)), "&burnIds=", burnIdsBytes);
+        bytes memory url = bytes.concat(drawUrl(string(phrase)), "&burnIds=", burnIdsBytes);
         req.addBytes("get", url);
         req.add("path", "payload,data"); // response looks like: { payload: { data: '' } }
         sendChainlinkRequest(req, feeAnyApi);
@@ -191,7 +190,7 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
     function fulfillCombine(bytes32 requestId, bytes memory bytesData) public recordChainlinkFulfillment(requestId) {
         emit CombineRequestFulfilled(requestId, bytesData);
 
-        (string memory imageUrl, uint256[] memory burnIds,,) = _decodeDrawResponse(bytesData, true);
+        (string memory imageUrl, uint256[] memory burnIds,) = _decodeDrawResponse(bytesData, true);
 
         // Burn the burned word NFTs, then mint a new one
         bytes memory burnIdsBytes;
@@ -224,11 +223,8 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
         require(sent, "Unable to transfer");
     }
 
-    function drawUrl(string memory phrase, address owner) public pure returns (bytes memory) {
-        return bytes.concat(
-            "https://nordle-server-ltu9g.ondigitalocean.app/draw?phrase=", bytes(phrase),
-            "&owner=", bytes32(uint256(uint160(owner)))
-        );
+    function drawUrl(string memory phrase) public pure returns (bytes memory) {
+        return bytes.concat("https://nordle-server-ltu9g.ondigitalocean.app/draw?phrase=", bytes(phrase));
     }
 
     /// @dev Decodes response from drawing, based on if it's a CreateWord or Combine
@@ -238,7 +234,7 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
         returns (
             string memory imageUrl,
             uint256[] memory burnIds,
-            address owner,
+            // address owner,
             bytes memory phrase
         )
     {
@@ -257,8 +253,8 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
                 unchecked { i++; }
             }
         } else {
-            owner = address(uint160(uint256((payload.slice(index, 32).toBytes32(0)))));
-            index += 32;
+            // owner = address(uint160(uint256((payload.slice(index, 32).toBytes32(0)))));
+            // index += 32;
             phrase = payload.slice(index, payload.length - index);
         }
     }
