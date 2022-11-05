@@ -112,7 +112,9 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
     /// @dev Initiate request to create new word NFT, and you can "buy" a word (initiate it)
     function requestCreateWord(string memory word) public payable {
         require(msg.value == wordForcedPrice, 'Invalid payment');
-        _createWord(word);
+        uint256 pseudoRequestId = uint256(bytes32(abi.encodePacked(block.timestamp, msg.sender, word)));
+        tempRequestCreateWordHolders[pseudoRequestId] = msg.sender;
+        _createWord(word, pseudoRequestId);
     }
 
     /// @dev Callback function for VRF, using the random number to get the initial word
@@ -122,10 +124,10 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
 
         // emit FulfilledVRF(_requestId, randomIndex, word);
 
-        _createWord(word);
+        _createWord(word, _requestId);
     }
 
-    function _createWord(string memory _initialWord) internal {
+    function _createWord(string memory _initialWord, uint256 _requestId) internal {
         // Chainlink Any API
         Chainlink.Request memory req = buildChainlinkRequest(
             jobIdAnyApi,
@@ -135,7 +137,10 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
         bytes memory url = drawUrl(_initialWord);
         req.add("get", string(url));
         req.add("path", "payload,data"); // response looks like: { payload: { data: '' } }
-        sendChainlinkRequest(req, feeAnyApi);
+        
+        bytes32 requestId = sendChainlinkRequest(req, feeAnyApi);
+        tempRequestCreateWordHolders[uint256(requestId)] = tempRequestCreateWordHolders[_requestId];
+        // delete tempRequestCreateWordHolders[_requestId];
 
         // emit CreateWordRequested(url, _initialWord);
     }
@@ -151,6 +156,7 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
         emit CreateWordRequestFulfilled(tokenIdCount, word);
 
         _mintWord(tempRequestCreateWordHolders[uint256(requestId)], imageUrl, word);
+        // delete tempRequestCreateWordHolders[uint256(requestId)];
     }
 
     /**
