@@ -8,7 +8,6 @@ import { VRFConsumerBaseV2 } from "@chainlink/contracts/src/v0.8/VRFConsumerBase
 import { ERC721, ERC721URIStorage } from "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 
 import { BytesLib } from "./BytesLib.sol";
-import "hardhat/console.sol";
 
 /**
  * Request testnet LINK and ETH here: https://faucets.chain.link/
@@ -21,7 +20,7 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
     using Chainlink for Chainlink.Request;
 
     event CreateWordRequested(bytes url, string indexed word);
-    event CreateWordRequestFulfilled(bytes32 indexed requestId, bytes indexed data, uint256 tokenIdCount, string word);
+    event CreateWordRequestFulfilled(uint256 tokenIdCount, string word);
 
     event CombineRequested(bytes url, string[] indexed words, uint256[] indexed burnIds);
     event CombineRequestFulfilled(bytes32 indexed requestId, bytes indexed data);
@@ -94,24 +93,24 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
         //
         // TODO: Chainlink VRF for creating random word
         //
-        // VRF_COORDINATOR.requestRandomWords(
-        //     vrfKeyHash,
-        //     vrfSubscriptionId,
-        //     3, // Number of confirmations
-        //     100000, // Callback gas limit
-        //     1 // Number of generated words
-        // );
-        _createWord('unicorn');
+        VRF_COORDINATOR.requestRandomWords(
+            vrfKeyHash,
+            vrfSubscriptionId,
+            3, // Number of confirmations
+            100000, // Callback gas limit
+            1 // Number of generated words
+        );
+        // _createWord('unicorn');
     }
 
     /// @dev Callback function for VRF, using the random number to get the initial word
     function fulfillRandomWords(uint256 _requestId, uint256[] memory _randomWords) internal override {
         uint256 randomIndex = _randomWords[0] % nordleWords.length;
         string memory initialWord = nordleWords[randomIndex];
-        console.log("---FullFillVRF---");
-        console.log(_requestId, initialWord);
+        // console.log("---FullFillVRF---");
+        // console.log(_requestId, initialWord);
         emit FulFilledVRF(_requestId, randomIndex, initialWord);
-        console.log("Emitted");
+        // console.log("Emitted");
         _createWord(initialWord);
     }
 
@@ -138,7 +137,7 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
         // We can cast wordBytes (bytes) to bytes32 because we know it's just one word!
         string memory word = bytes32ToString(bytes32(wordBytes));
 
-        emit CreateWordRequestFulfilled(requestId, bytesData, tokenIdCount, word);
+        emit CreateWordRequestFulfilled(tokenIdCount, word);
 
         _mint(msg.sender, tokenIdCount);
         _setTokenURI(tokenIdCount, imageUrl);
@@ -277,50 +276,5 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
             array[c] = input[c];
         }
         return string(array);
-    }
-
-    /// @dev https://ethereum.stackexchange.com/a/96516
-    /// @dev Is this function safe?
-    function bytesToString(bytes memory byteCode) public pure returns (string memory stringData) {
-        uint256 blank = 0; //blank 32 byte value
-        uint256 length = byteCode.length;
-
-        uint256 cycles = byteCode.length / 0x20;
-        uint256 requiredAlloc = length;
-
-        if (length % 0x20 > 0) //optimise copying the final part of the bytes - to avoid looping with single byte writes
-        {
-            cycles++;
-            requiredAlloc += 0x20; //expand memory to allow end blank, so we don't smack the next stack entry
-        }
-
-        stringData = new string(requiredAlloc);
-
-        //copy data in 32 byte blocks
-        assembly {
-            let cycle := 0
-
-            for {
-                let mc := add(stringData, 0x20) //pointer into bytes we're writing to
-                let cc := add(byteCode, 0x20) //pointer to where we're reading from
-            } lt(cycle, cycles) {
-                mc := add(mc, 0x20)
-                cc := add(cc, 0x20)
-                cycle := add(cycle, 0x01)
-            } {
-                mstore(mc, mload(cc))
-            }
-        }
-
-        //finally blank final bytes and shrink size (part of the optimisation to avoid looping adding blank bytes1)
-        if (length % 0x20 > 0) {
-            uint256 offsetStart = 0x20 + length;
-            assembly {
-                let mc := add(stringData, offsetStart)
-                mstore(mc, mload(add(blank, 0x20)))
-                //now shrink the memory back so the returned object is the correct size
-                mstore(stringData, length)
-            }
-        }
     }
 }
