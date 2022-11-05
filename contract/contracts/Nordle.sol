@@ -66,7 +66,7 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
      * Oracle: 0xCC79157eb46F5624204f47AB42b3906cAA40eaB7 (Chainlink DevRel)
      * VRF: 0x2Ca8E0C643bDe4C2E08ab1fA0da3401AdAD7734D
      * sKeyHash: 0x79d3d8832d904592c0bf9818b621522c988bb8b0c05cdc3b15aea1b6e8db0c15
-     * jobId: 7da2702f37fd48e5b1b9a5715e3509b6
+     * jobId: ca98366cc7314957b8c012c72f05aeeb
      * 
      *
      */
@@ -75,12 +75,13 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
         address linkOracle,
         address linkVRFCoordinator,
         bytes32 sKeyHash,
-        bytes32 _jobIdAnyApi,
+        // bytes32 _jobIdAnyApi,
         uint64 _vrfSubscriptionId
     ) ERC721("Nordle", "NRD") ConfirmedOwner(msg.sender) VRFConsumerBaseV2(linkVRFCoordinator) {
         setChainlinkToken(linkToken);
         setChainlinkOracle(linkOracle);
-        jobIdAnyApi = _jobIdAnyApi;
+        // jobIdAnyApi = _jobIdAnyApi;
+        jobIdAnyApi = 'ca98366cc7314957b8c012c72f05aeeb';
         feeAnyApi = (1 * LINK_DIVISIBILITY) / 10; // 0,1 * 10**18 (Varies by network and job)
 
         // Intialize the VRF Coordinator
