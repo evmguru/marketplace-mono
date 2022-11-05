@@ -16,9 +16,11 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner {
     using BytesLib for bytes;
     using Chainlink for Chainlink.Request;
 
-    event RequestFulfilled(bytes32 indexed requestId, bytes indexed data);
+    event CreateWordRequested(bytes url, string indexed word);
+    event CreateWordRequestFulfilled(bytes32 indexed requestId, bytes indexed data);
 
     event CombineRequested(bytes url, string[] indexed words, uint256[] indexed burnIds);
+    event CombineRequestFulfilled(bytes32 indexed requestId, bytes indexed data);
 
     bytes32 private jobId;
     uint256 private fee;
@@ -51,6 +53,36 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner {
         setChainlinkOracle(linkOracle);
         jobId = _jobId;
         fee = (1 * LINK_DIVISIBILITY) / 10; // 0,1 * 10**18 (Varies by network and job)
+    }
+
+    function requestCreateWord() public {
+        //
+        // TODO: Chainlink VRF for creating random word
+        //
+        string memory word = 'unicorn';
+
+        // Chainlink Any API
+        Chainlink.Request memory req = buildChainlinkRequest(jobId, address(this), this.fulfillCreateWord.selector);
+        bytes memory url = drawUrl(word);
+        req.addBytes('get', url);
+        req.add('path', 'payload,data'); // response looks like: { payload: { data: '' } }
+        sendChainlinkRequest(req, fee);
+
+        emit CreateWordRequested(url, word);
+    }
+
+    function fulfillCreateWord(bytes32 requestId, bytes memory bytesData) public recordChainlinkFulfillment(requestId) {
+        emit CreateWordRequestFulfilled(requestId, bytesData);
+
+        (string memory imageUrl,, bytes memory wordBytes) = _decodeDrawResponse(bytesData, false);
+
+        // We can cast wordBytes (bytes) to bytes32 because we know it's just one word!
+        string memory word = bytes32ToString(bytes32(wordBytes));
+
+        _mint(msg.sender, tokenIdCount);
+        _setTokenURI(tokenIdCount, imageUrl);
+        tokenWords[tokenIdCount] = word;
+        tokenIdCount++;
     }
 
     /**
@@ -89,9 +121,9 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner {
      * @dev This is called by the oracle. recordChainlinkFulfillment must be used.
      */
     function fulfillCombine(bytes32 requestId, bytes memory bytesData) public recordChainlinkFulfillment(requestId) {
-        emit RequestFulfilled(requestId, bytesData);
+        emit CombineRequestFulfilled(requestId, bytesData);
 
-        (string memory imageUrl, uint256[] memory burnIds, bytes memory burnIdsBytes) = _decodeDrawResponse(bytesData);
+        (string memory imageUrl, uint256[] memory burnIds, bytes memory burnIdsBytes) = _decodeDrawResponse(bytesData, true);
 
         // Retrieve the owner by referencing the first burn Id
         address combineOwner = ownerOf(burnIds[0]);
@@ -120,26 +152,27 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner {
         bytes memory output;
 
         for (uint i = 0; i < words.length; i++) {
-            output = abi.encode(output, words[i]);
+            output = abi.encode(output, '_', words[i]); // 'happy dolphine' => 'happy_dolphine'
             unchecked { i++; }
         }
 
         return string(output);
     }
 
-    function drawUrl(string memory words, bytes memory burnIds) public pure returns (bytes memory) {
-        return bytes.concat(
-            'https://api.nordle.lol/draw?words=',
-            bytes(words),
-            '&burnIds=',
-            burnIds
-        );
+    function drawUrl(string memory phrase) public pure returns (bytes memory) {
+        return bytes.concat('https://api.nordle.lol/draw?phrase=', bytes(phrase));
     }
 
-    function _decodeDrawResponse(bytes memory payload)
+    function drawUrl(string memory phrase, bytes memory burnIds) public pure returns (bytes memory) {
+        return bytes.concat(drawUrl(phrase), '&burnIds=', burnIds);
+    }
+
+
+    /// @dev Decodes response from drawing, based on if it's a CreateWord or Combine
+    function _decodeDrawResponse(bytes memory payload, bool isCombine)
         private
         pure
-        returns (string memory imageUrl, uint256[] memory burnIds, bytes memory burnIdsBytes)
+        returns (string memory imageUrl, uint256[] memory burnIds, bytes memory burnIdsBytesOrOutputPhrase)
     {
         uint index = 0;
 
@@ -156,8 +189,10 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner {
         uint j = 0;
         while (index < payload.length) {
             bytes32 bib = payload.slice(index, index + 32).toBytes32(0);
-            burnIdsBytes = bytes.concat(burnIdsBytes, bib);
-            burnIds[j] = uint256(bib);
+            burnIdsBytesOrOutputPhrase = bytes.concat(burnIdsBytesOrOutputPhrase, bib);
+            if (isCombine) {
+                burnIds[j] = uint256(bib);
+            }
             index += 256;
             j++;
         }
