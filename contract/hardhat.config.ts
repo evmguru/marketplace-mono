@@ -2,6 +2,7 @@ import "@nomicfoundation/hardhat-toolbox";
 import { config as dotenvConfig } from "dotenv";
 import type { HardhatUserConfig } from "hardhat/config";
 import type { NetworkUserConfig } from "hardhat/types";
+import "hardhat-contract-sizer";
 import { resolve } from "path";
 
 import "./tasks/accounts";
@@ -42,7 +43,8 @@ function getChainConfig(chain: keyof typeof chainIds): NetworkUserConfig {
       jsonRpcUrl = "https://api.avax.network/ext/bc/C/rpc";
       break;
     case "goerli":
-      jsonRpcUrl = "https://goerli.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161";
+      jsonRpcUrl = `https://goerli.infura.io/v3/${infuraApiKey}`;
+      // jsonRpcUrl = "https://rpc.ankr.com/eth_goerli";
       break;
     case "mumbai":
       jsonRpcUrl = "https://rpc.ankr.com/polygon_mumbai";
@@ -68,6 +70,7 @@ function getChainConfig(chain: keyof typeof chainIds): NetworkUserConfig {
     accounts: [process.env.PRIVATE_KEY as string],
     chainId: chainIds[chain],
     url: jsonRpcUrl,
+    allowUnlimitedContractSize: true
   };
 }
 
@@ -155,7 +158,7 @@ const config: HardhatUserConfig = {
       // https://hardhat.org/hardhat-network/#solidity-optimizer-support
       optimizer: {
         enabled: true,
-        runs: 10000,
+        runs: 10,
       },
     },
   },
