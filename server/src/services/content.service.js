@@ -62,13 +62,22 @@ export async function draw(options) {
       [imageUrlLength, imageUrl, phrase],
     )
 
-    // console.log(phrase, imageUrl)
-    // console.log(bytesData)
+    console.log('---phrase---')
+    console.log(phrase)
+
+    console.log('---imageUrl---')
+    console.log(imageUrl)
+
+    console.log('---bytesData---')
+    console.log(bytesData)
 
     return bytesData
   } catch (e) {
     console.log(e)
     if (e instanceof ApiError) throw e
-    throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, 'Internal server error')
+    throw new ApiError(
+      httpStatus.INTERNAL_SERVER_ERROR,
+      'Internal server error',
+    )
   }
 }

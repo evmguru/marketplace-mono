@@ -130,124 +130,134 @@ contract Nordle is ERC721URIStorage, ChainlinkClient, ConfirmedOwner, VRFConsume
     _createWord(word, _requestId);
   }
 
-    function _createWord(string memory _initialWord, uint256 _requestId) internal {
-        bytes32 requestId = submitChainlinkApiRequest(_initialWord, this.fulfillCreateWord.selector);
-        requestedCreateWords[uint256(requestId)] = requestedCreateWords[_requestId];
-        // delete tempRequestCreateWordHolders[_requestId];
+  function _createWord(string memory _initialWord, uint256 _requestId) internal {
+    bytes32 requestId = submitChainlinkApiRequest(_initialWord, this.fulfillCreateWord.selector);
+    requestedCreateWords[uint256(requestId)] = requestedCreateWords[_requestId];
+    // delete tempRequestCreateWordHolders[_requestId];
 
-        // emit CreateWordRequested(url, _initialWord);
+    // emit CreateWordRequested(url, _initialWord);
+  }
+
+  /// @dev Fulfill request to create new word NFT
+  /// @dev Actual minting happens here
+  function fulfillCreateWord(bytes32 requestId, bytes memory bytesData) public recordChainlinkFulfillment(requestId) {
+    (string memory imageUrl, bytes memory wordBytes) = _decodeDrawResponse(bytesData);
+
+    // We can cast wordBytes (bytes) to bytes32 because we know it's just one word!
+    // string memory word = string(wordBytes);
+
+    // emit CreateWordRequestFulfilled(tokenIdCount, word);
+
+    _mintWord(requestedCreateWords[uint256(requestId)], imageUrl, string(wordBytes));
+    // delete tempRequestCreateWordHolders[uint256(requestId)];
+  }
+
+  /**
+   * @notice Request variable bytes from the oracle
+   */
+  function requestCombine(uint256[] memory burnIds) public returns (bytes32 requestId) {
+    // Validate that caller is owner of all to-be-burned token IDs,
+    // while adding all words for combining
+    bytes memory burnIdsBytes;
+    bytes memory phrase;
+    for (uint256 i = 0; i < burnIds.length; i++) {
+      require(ownerOf(burnIds[i]) == msg.sender, 'Invalid owner of burn ID');
+      burnIdsBytes = abi.encodePacked(burnIdsBytes, bytes32(burnIds[i])); // pack to save slots
+      phrase = abi.encode(phrase, '_', tokenWords[burnIds[i]]); // 'happy dolphine' => 'happy_dolphine'
+      unchecked {
+        i++;
+      }
     }
 
-    /// @dev Fulfill request to create new word NFT
-    /// @dev Actual minting happens here
-    function fulfillCreateWord(bytes32 requestId, bytes memory bytesData) public recordChainlinkFulfillment(requestId) {
-        (string memory imageUrl,bytes memory wordBytes) = _decodeDrawResponse(bytesData);
+    // Store what phrase was burned for burnIdsBytes
+    burnPhraseStorage[burnIdsBytes] = string(phrase);
 
-        // We can cast wordBytes (bytes) to bytes32 because we know it's just one word!
-        string memory word = string(wordBytes);
+    requestId = submitChainlinkApiRequest(string(phrase), this.fulfillCombine.selector);
+    requestedCombineBurnIds[requestId] = burnIds;
 
-        // emit CreateWordRequestFulfilled(tokenIdCount, word);
+    // emit CombineRequested(url, string(phrase), burnIds);
+  }
 
-        _mintWord(requestedCreateWords[uint256(requestId)], imageUrl, word);
-        // delete tempRequestCreateWordHolders[uint256(requestId)];
+  // /**
+  //  * @notice Fulfillment function for variable bytes
+  //  * @dev This is called by the oracle. recordChainlinkFulfillment must be used.
+  //  */
+
+  // TODO: Add back modifier "recordChainlinkFulfillment(requestId)"
+  // Removed for testing to allow for direct calls
+  function fulfillCombine(bytes32 requestId, bytes memory bytesData) public {
+    emit CombineRequestFulfilled(requestId, bytesData);
+
+    (string memory imageUrl, ) = _decodeDrawResponse(bytesData);
+
+    // Burn the burned word NFTs, then mint a new one
+    uint256[] memory burnIds = requestedCombineBurnIds[requestId];
+    require(ownerOf(burnIds[0]) != address(0), 'Token already burned');
+
+    bytes memory burnIdsBytes;
+    for (uint256 i = 0; i < burnIds.length; i++) {
+      _burn(burnIds[i]);
+      burnIdsBytes = abi.encodePacked(burnIdsBytes, bytes32(burnIds[i])); // pack to save slots
+      unchecked {
+        i++;
+      }
     }
 
-    /**
-     * @notice Request variable bytes from the oracle
-     */
-    function requestCombine(uint256[] memory burnIds) public {
-        // Validate that caller is owner of all to-be-burned token IDs,
-        // while adding all words for combining
-        bytes memory burnIdsBytes;
-        bytes memory phrase;
-        for (uint256 i = 0; i < burnIds.length; i++) {
-            require(ownerOf(burnIds[i]) == msg.sender, "Invalid owner of burn ID");
-            burnIdsBytes = abi.encodePacked(burnIdsBytes, bytes32(burnIds[i])); // pack to save slots
-            phrase = abi.encode(phrase, "_", tokenWords[burnIds[i]]); // 'happy dolphine' => 'happy_dolphine'
-            unchecked {
-                i++;
-            }
-        }
+    // Mint new token to owner; Retrieve the owner by referencing the first burn Id
+    // _mintWord(ownerOf(burnIds[0]), imageUrl, burnPhraseStorage[burnIdsBytes]);
+  }
 
-        // Store what phrase was burned for burnIdsBytes
-        burnPhraseStorage[burnIdsBytes] = string(phrase);
+  function _mintWord(
+    address owner,
+    string memory imageUrl,
+    string memory phrase
+  ) internal {
+    _mint(owner, tokenIdCount);
+    _setTokenURI(tokenIdCount, imageUrl);
+    tokenWords[tokenIdCount] = phrase;
+    tokenIdCount++;
+  }
 
-        bytes32 requestId = submitChainlinkApiRequest(string(phrase), this.fulfillCombine.selector);
-        requestedCombineBurnIds[requestId] = burnIds;
+  function submitChainlinkApiRequest(string memory phrase, bytes4 callbackSelector)
+    internal
+    returns (bytes32 requestId)
+  {
+    Chainlink.Request memory req = buildChainlinkRequest(jobIdAnyApi, address(this), callbackSelector);
+    req.add('get', string(drawUrl(phrase)));
+    req.add('path', 'payload,data'); // response looks like: { payload: { data: '' } }
+    requestId = sendChainlinkRequest(req, feeAnyApi);
+  }
 
-        // emit CombineRequested(url, string(phrase), burnIds);
-    }
+  /**
+   * Allow withdraw of Link & Native tokens from the contract
+   */
+  function withdraw() public onlyOwner {
+    LinkTokenMini link = LinkTokenMini(chainlinkTokenAddress());
+    require(link.transfer(msg.sender, link.balanceOf(address(this))), 'Unable to transfer');
+    (bool sent, ) = address(msg.sender).call{ value: address(this).balance }('');
+    require(sent, 'Unable to transfer');
+  }
 
-    // /**
-    //  * @notice Fulfillment function for variable bytes
-    //  * @dev This is called by the oracle. recordChainlinkFulfillment must be used.
-    //  */
-    function fulfillCombine(bytes32 requestId, bytes memory bytesData) public recordChainlinkFulfillment(requestId) {
-        emit CombineRequestFulfilled(requestId, bytesData);
+  function drawUrl(string memory phrase) public pure returns (bytes memory) {
+    return bytes.concat('https://nordle-server-ltu9g.ondigitalocean.app/draw?phrase=', bytes(phrase));
+  }
 
-        (string memory imageUrl,) = _decodeDrawResponse(bytesData);
+  /// @dev Decodes response from drawing, based on if it's a CreateWord or Combine
+  function _decodeDrawResponse(bytes memory payload)
+    internal
+    pure
+    returns (string memory imageUrl, bytes memory phrase)
+  {
+    uint256 index = 0;
 
-        // Burn the burned word NFTs, then mint a new one
-        uint256[] memory burnIds = requestedCombineBurnIds[requestId];
-        require(ownerOf(burnIds[0]) != address(0), 'Token already burned');
+    uint256 urlSize = payload.slice(0, 32).toUint256(0);
+    index += 32;
 
-        bytes memory burnIdsBytes;
-        for (uint256 i = 0; i < burnIds.length; i++) {
-            _burn(burnIds[i]);
-            burnIdsBytes = abi.encodePacked(burnIdsBytes, bytes32(burnIds[i])); // pack to save slots
-            unchecked {
-                i++;
-            }
-        }
+    imageUrl = string(payload.slice(index, urlSize));
+    index += urlSize;
 
-        // Mint new token to owner; Retrieve the owner by referencing the first burn Id
-        _mintWord(ownerOf(burnIds[0]), imageUrl, burnPhraseStorage[burnIdsBytes]);
-    }
-
-    function _mintWord(address owner, string memory imageUrl, string memory phrase) internal {
-        _mint(owner, tokenIdCount);
-        _setTokenURI(tokenIdCount, imageUrl);
-        tokenWords[tokenIdCount] = phrase;
-        tokenIdCount++;
-    }
-
-    function submitChainlinkApiRequest(string memory phrase, bytes4 callbackSelector) internal returns (bytes32 requestId) {
-        Chainlink.Request memory req = buildChainlinkRequest(jobIdAnyApi, address(this), callbackSelector);
-        req.add("get", string(drawUrl(phrase)));
-        req.add("path", "payload,data"); // response looks like: { payload: { data: '' } }
-        requestId = sendChainlinkRequest(req, feeAnyApi);
-    }
-
-    /**
-     * Allow withdraw of Link & Native tokens from the contract
-     */
-    function withdraw() public onlyOwner {
-        LinkTokenMini link = LinkTokenMini(chainlinkTokenAddress());
-        require(link.transfer(msg.sender, link.balanceOf(address(this))), "Unable to transfer");
-        (bool sent,) = address(msg.sender).call{value: address(this).balance}("");
-        // require(sent, "Unable to transfer");
-    }
-
-    function drawUrl(string memory phrase) public pure returns (bytes memory) {
-        return bytes.concat("https://nordle-server-ltu9g.ondigitalocean.app/draw?phrase=", bytes(phrase));
-    }
-
-    /// @dev Decodes response from drawing, based on if it's a CreateWord or Combine
-    function _decodeDrawResponse(bytes memory payload)
-        internal
-        pure
-        returns (string memory imageUrl, bytes memory phrase)
-    {
-        uint256 index = 0;
-
-        uint256 urlSize = payload.slice(0, 32).toUint256(0);
-        index += 32;
-
-        imageUrl = string(payload.slice(index, urlSize));
-        index += urlSize;
-        
-        if (payload.length > index + 1) phrase = payload.slice(index, payload.length - index);
-    }
+    phrase = payload.slice(index, payload.length - index);
+  }
 
   // function bytes32ToString(bytes32 input) internal pure returns (string memory) {
   //     uint256 i;
