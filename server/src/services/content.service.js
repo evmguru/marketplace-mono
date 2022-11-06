@@ -1,10 +1,12 @@
 import { utils } from 'ethers'
 // import * as fs from 'fs'
 import httpStatus from 'http-status'
-import { Web3Storage } from 'web3.storage'
+import fetch from 'node-fetch'
+import { Readable } from 'stream'
+import { File } from 'web3.storage'
 
 import { ApiError } from '../utils'
-import { openai } from '../constants'
+import { makeStorageClient, openai } from '../constants'
 
 // const loadJSON = (path) => JSON.parse(fs.readFileSync(new URL(path, import.meta.url)))
 // const DeployedContractAbi = loadJSON('../constants/DeployedContract.json')
@@ -13,23 +15,38 @@ import { openai } from '../constants'
 //   gasLimit: 5_000_000,
 // }
 
-const abiCoder = new utils.AbiCoder()
+const storage = makeStorageClient()
+
+function ReadableBufferStream(arrayBuffer) {
+  return new Readable({
+    start(controller) {
+      controller.enqueue(arrayBuffer)
+      controller.close()
+    },
+  })
+}
 
 export async function draw(options) {
   try {
     const { phrase } = options
 
-    // const response = await openai.createImage({
-    //   prompt: phrase.split('_').join(' '), // happy_unicorn => happy unicorn
-    //   n: 1,
-    //   size: '512x512',
-    // })
-    // const imageUrl = response.data.data[0].url
+    const response = await openai.createImage({
+      prompt: decodeURIComponent(phrase), // happy_unicorn => happy unicorn
+      n: 1,
+      size: '512x512',
+    })
+    const generatedImageUrl = response.data.data[0].url
+    // const generatedImageUrl = 'https://oaidalleapiprodscus.blob.core.windows.net/private/org-j7QXf8rISyjEHz1qT8BcRXBI/user-cPKQfE1yYROUxPeytMJ0wWfB/img-S1SXRBRQ7bEmZAWRGGLgugZv.png?st=2022-11-06T15%3A07%3A12Z&se=2022-11-06T17%3A07%3A12Z&sp=r&sv=2021-08-06&sr=b&rscd=inline&rsct=image/png&skoid=6aaadede-4fb3-4698-a8f6-684d7786b067&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2022-11-06T01%3A44%3A00Z&ske=2022-11-07T01%3A44%3A00Z&sks=b&skv=2021-08-06&sig=loXWhtW%2BRIIfFR8OR/64a1KUJgjLrV0ixCw4F28LxRU%3D'
+    // console.log(generatedImageUrl)
 
-    // TODO: Generate DALL-E image and save to IPFS, and return that link
+    const imageBuffer = await fetch(generatedImageUrl).then((res) => res.arrayBuffer())
+    const imageName = decodeURIComponent(phrase).split(' ').join('_')
+    const imageFile = new File([imageBuffer], imageName) // need to convert to `File` for web3.storage
 
-    // const imageUrl = 'https://oaidalleapiprodscus.blob.core.windows.net/private/org-j7QXf8rISyjEHz1qT8BcRXBI/user-cPKQfE1yYROUxPeytMJ0wWfB/img-Ctl95G6mTo6JLV2Tsimhnr6p.png?st=2022-11-05T04%3A27%3A00Z&se=2022-11-05T06%3A27%3A00Z&sp=r&sv=2021-08-06&sr=b&rscd=inline&rsct=image/png&skoid=6aaadede-4fb3-4698-a8f6-684d7786b067&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2022-11-05T01%3A11%3A23Z&ske=2022-11-06T01%3A11%3A23Z&sks=b&skv=2021-08-06&sig=iUrwm8bp0W6v22CIJtN2p0ryU4xesU%2BeQ5EXs/K21aM%3D'
-    const imageUrl = 'https://ipfs.io/ipfs/bafybeicizq4zwelyxkwq2rwsavhppxyrczodmyolgyqks5kgmbgekw5x5a/55181940.jpg'
+    const cid = await storage.put([imageFile])
+    if (!cid) throw new Error('IPFS upload failed')
+
+    const imageUrl = `https://${cid}.ipfs.w3s.link/${imageName}`
     const imageUrlLength = utils.toUtf8Bytes(imageUrl).length
     console.log(imageUrlLength, imageUrl)
 
