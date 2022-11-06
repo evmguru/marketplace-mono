@@ -57,21 +57,21 @@ export async function draw(options) {
     // 3b) Or prhase
 
     // NOTE: MUST USE `utils.solidityPack` in ethers.js to mimic `abi.encode()` in Solidity
-    const bytesData = utils.solidityPack(
-      ['uint256', 'string', 'string'],
-      [imageUrlLength, imageUrl, phrase],
-    )
+    // const bytesData = utils.solidityPack(
+    //   ['uint256', 'string', 'string'],
+    //   [imageUrlLength, imageUrl, phrase],
+    // )
 
-    console.log('---phrase---')
-    console.log(phrase)
+    // console.log('---phrase---')
+    // console.log(phrase)
 
-    console.log('---imageUrl---')
-    console.log(imageUrl)
+    // console.log('---imageUrl---')
+    // console.log(imageUrl)
 
-    console.log('---bytesData---')
-    console.log(bytesData)
+    // console.log('---bytesData---')
+    // console.log(bytesData)
 
-    return bytesData
+    return imageUrl
   } catch (e) {
     console.log(e)
     if (e instanceof ApiError) throw e
