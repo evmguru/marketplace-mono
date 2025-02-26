@@ -1,5 +1,5 @@
 # Nordle (server)
 
-Refer to [Nordle contracts](https://github.com/Nordle-404/nordle-v2/blob/dev/README.md) for a full introduction.
+For a comprehensive introduction, refer to the [Nordle contracts](https://github.com/Nordle-404/nordle-v2/blob/dev/README.md).
 
-Note that the contract folder is outdated, and this repo contains the server logic.
+⚠ Note: The contract folder in this repository is outdated. This repo focuses on the server-side logic.
